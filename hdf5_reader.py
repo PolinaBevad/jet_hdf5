@@ -1,6 +1,7 @@
 import math
 import h5py
 import numpy as np
+import argparse
 import matplotlib.pyplot as plt
 from scipy.interpolate import interp1d
 from matplotlib.font_manager import FontProperties
@@ -42,6 +43,37 @@ def main():
     gammaB_dataset = prepare_gammaB_dataset(amount_of_indexes, values_at_lowest_refine)
     calculate_gammaB_dataset(dens_dataset, ener_dataset, velx_dataset, vely_dataset,
                              gammaB_dataset, amount_of_indexes, pres_dataset)
+
+    # Find maximum of gamma*beta for preparation of the plot dictionary
+    max_gammaB = check_max_lorentz_factor(gammaB_dataset, indexes)
+
+    # Prepare dict for plot
+    round_level = 0
+    gamma_dict = prepare_gamma_dict_for_plot(ener_dataset, gammaB_dataset, indexes, max_gammaB, round_level)
+
+    total_energy = check_energy_dataset(gamma_dict)
+    # Draw plot
+    plot_gammaB_ener(gamma_dict, total_energy)
+
+
+def only_plot_gamma():
+    """
+    Reads HDF5 file with gamma (already calculated) and
+    create plots of Lorentz factor*b to energy distribution.
+    """
+    # Read HDF5 file with h5py library
+    file = h5py.File(HDF5_FILE_PATH, 'r')
+    # All comments with ### are for some check or print functions
+
+    # We need values only from indexes with max refine level
+    indexes, amount_of_indexes = prepare_indexes_at_max_refine_level(file)
+
+    # Retrieve energy
+    ener_dataset = file['ener']
+
+    # Save the gamma dataset to file so it can be used later
+    gamma_file = h5py.File('gamma.hdf5', 'r')
+    gammaB_dataset = gamma_file["gamma"]
 
     # Find maximum of gamma*beta for preparation of the plot dictionary
     max_gammaB = check_max_lorentz_factor(gammaB_dataset, indexes)
@@ -149,6 +181,12 @@ def calculate_gammaB_dataset(dens_dataset, ener_dataset, velx_dataset,
             gammaB_dataset[i][0][k] = current_gamma
     print("Gamma dataset calculated.")
 
+    # Save the gamma dataset to file so it can be used later
+    with h5py.File('gamma.hdf5', 'w') as f:
+        f.create_dataset_like("gamma", dens_dataset)
+        f['gamma'][...] = gammaB_dataset
+
+
 def prepare_gammaB_dataset(len_set, values_at_lowest_refine):
     """
     Prepare 3x dimensional dataset that will store data about gamma*b in the cells
@@ -214,6 +252,17 @@ def check_max_density(dens_dataset, indexes):
     print('Max density: ', max_dens)
 
 
+parser = argparse.ArgumentParser()
+parser.add_argument("--HDF5", required=False)
+parser.add_argument("--gamma", required=False, dest='gamma', action='store_true')
+parser.set_defaults(gamma=False)
+
 if __name__ == '__main__':
-    # TODO: add argparser for file
-    main()
+    # TODO: add multithreading?
+    args = parser.parse_args()
+    if args.HDF5:
+        HDF5_FILE_PATH = args.HDF5
+    if args.gamma:
+        only_plot_gamma()
+    else:
+        main()
