@@ -36,10 +36,10 @@ def main():
     velx_dataset = file['velx']
     vely_dataset = file['vely']
 
-    check_max_density(dens_dataset, indexes)
-
+    ### check_max_density(dens_dataset, indexes)
+    values_at_lowest_refine = len(dens_dataset[0][0])
     # Calculate Lorentz factor: first create empty matrix, then fill with calculated gamma*beta
-    gammaB_dataset = prepare_gammaB_dataset(amount_of_indexes)
+    gammaB_dataset = prepare_gammaB_dataset(amount_of_indexes, values_at_lowest_refine)
     calculate_gammaB_dataset(dens_dataset, ener_dataset, velx_dataset, vely_dataset,
                              gammaB_dataset, amount_of_indexes, pres_dataset)
 
@@ -119,11 +119,13 @@ def prepare_gamma_dict_for_plot(ener_dataset, gamma_dataset, indexes, max_gamma,
 
     # For all indexes where needed refinement level is laying, fill gammaB dictionary
     for i in indexes:
-        gamma_f = gamma_dataset[i][0][0]
-        for j in range(len(gamma_f)):
-            gammaBvalue = np.round(gamma_f[j], round_level)
-            # sum energy release for this value of gamma
-            gamma_dict[gammaBvalue] += ener_dataset[i][0][0][j]
+        for k in range(0, len(gamma_dataset[i][0])):
+            gamma_f = gamma_dataset[i][0][k]
+            for j in range(len(gamma_f)):
+                gammaBvalue = np.round(gamma_f[j], round_level)
+                # sum energy release for this value of gamma
+                gamma_dict[gammaBvalue] += ener_dataset[i][0][k][j]
+    print("Gamma plot prepared.")
     return gamma_dict
 
 
@@ -133,30 +135,30 @@ def calculate_gammaB_dataset(dens_dataset, ener_dataset, velx_dataset,
     Calculate gamma*b value from dens, pres, vel and ener datasets
     """
     for i in range(len_set):
-        dens = dens_dataset[i][0][0]
-        pres = pres_dataset[i][0][0]
-        ener = ener_dataset[i][0][0]
-        velx = velx_dataset[i][0][0]
-        vely = vely_dataset[i][0][0]
-        current_gamma = []
-        for j in range(len(dens[:])):
-            B = math.sqrt(velx[j] ** 2 + vely[j] ** 2)
-            gammaB = B * np.sqrt((pres[j] + ener[j]) / (dens[j] + pres[j] * 1.333 / 0.333))
-            current_gamma.append(gammaB)
-        gammaB_dataset[i][0][0] = current_gamma
+        for k in range(0, len(dens_dataset[i][0])):
+            dens = dens_dataset[i][0][k]
+            pres = pres_dataset[i][0][k]
+            ener = ener_dataset[i][0][k]
+            velx = velx_dataset[i][0][k]
+            vely = vely_dataset[i][0][k]
+            current_gamma = []
+            for j in range(len(dens[:])):
+                B = math.sqrt(velx[j] ** 2 + vely[j] ** 2)
+                gammaB = B * np.sqrt((pres[j] + ener[j]) / (dens[j] + pres[j] * 1.333 / 0.333))
+                current_gamma.append(gammaB)
+            gammaB_dataset[i][0][k] = current_gamma
+    print("Gamma dataset calculated.")
 
-
-def prepare_gammaB_dataset(len_set):
+def prepare_gammaB_dataset(len_set, values_at_lowest_refine):
     """
     Prepare 3x dimensional dataset that will store data about gamma*b in the cells
     """
     gammaB_dataset = []
     for i in range(len_set):
         gammaB_dataset.append(0)
-        x = [0]
         gammaB_dataset[i] = [0]
-        gammaB_dataset[i][0] = [0]
-        gammaB_dataset[i][0][0] = [0]
+        gammaB_dataset[i][0] = list([0 for j in range(0, values_at_lowest_refine)])
+    print("Gamma dataset filled with zeros.")
     return gammaB_dataset
 
 
@@ -165,13 +167,13 @@ def check_max_lorentz_factor(gamma_dataset, indexes):
     Prints and returns the max gamma (lorentz factor) from the dataset.
     Need to find it to determine maximum value for gamma axis in the plot.
     """
-
     max_gamma = 0
     for i in indexes:
-        current_max = max(gamma_dataset[i][0][0])
-        if max_gamma < current_max:
-            max_gamma = current_max
-    print('Max gamma', max_gamma)
+        for j in range(0, len(gamma_dataset[i][0])):
+            current_max = max(gamma_dataset[i][0][j])
+            if max_gamma < current_max:
+                max_gamma = current_max
+    print('Max gamma: ', max_gamma)
     return max_gamma
 
 
@@ -205,10 +207,11 @@ def check_max_density(dens_dataset, indexes):
     # Max density
     max_dens = 0
     for i in indexes:
-        current_max = max(dens_dataset[i][0][0])
-        if max_dens < current_max:
-            max_dens = current_max
-    print('Max density', max_dens)
+        for j in range(0, len(dens_dataset[i][0])):
+            current_max = max(dens_dataset[i][0][j])
+            if max_dens < current_max:
+                max_dens = current_max
+    print('Max density: ', max_dens)
 
 
 if __name__ == '__main__':
