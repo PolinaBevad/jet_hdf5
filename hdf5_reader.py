@@ -1,4 +1,5 @@
 import math
+import os
 import h5py
 import numpy as np
 import argparse
@@ -8,27 +9,29 @@ from matplotlib.font_manager import FontProperties
 
 # Path to hdf5 file (checkpoint file)
 FONT_PROPERTIES_TTF_FILE = 'FreeSansBold.ttf'
-HDF5_FILE_PATH = 'data\dens3.8_pres6.4_ref10_reci4.5_core10_jet1hdf5_chk_0076'
+INTERPOLATION = 1000
 
 # Unicodes for beautiful symbols of  Lorentz factor and b=v/c
 G = u'\u0393'
 B = u'\u03B2'
 
 
-def main():
+def main(hdf5_file):
     """
     Reads HDF5 file result from hydrodynamic FLASH code.
     Takes density, pressure, energy and velocities,  calculates Lorentz factor
     and create plots of Lorentz factor*b to energy distribution.
+    All comments with ### are for some check or print functions
     """
     # Read HDF5 file with h5py library
-    file = h5py.File(HDF5_FILE_PATH, 'r')
-    # All comments with ### are for some check or print functions
+    file = h5py.File(hdf5_file, 'r')
 
     ### print_all_available_variables(file)
 
+    # Get refinement levels
+    refine_dataset = file['refine level']
     # We need values only from indexes with max refine level
-    indexes, amount_of_indexes = prepare_indexes_at_max_refine_level(file)
+    indexes, amount_of_indexes = prepare_indexes_at_max_refine_level(refine_dataset)
 
     # Retrieve all needed datasets
     dens_dataset = file['dens']
@@ -38,11 +41,12 @@ def main():
     vely_dataset = file['vely']
 
     ### check_max_density(dens_dataset, indexes)
+
     values_at_lowest_refine = len(dens_dataset[0][0])
     # Calculate Lorentz factor: first create empty matrix, then fill with calculated gamma*beta
     gammaB_dataset = prepare_gammaB_dataset(amount_of_indexes, values_at_lowest_refine)
-    calculate_gammaB_dataset(dens_dataset, ener_dataset, velx_dataset, vely_dataset,
-                             gammaB_dataset, amount_of_indexes, pres_dataset)
+    calculate_gammaB_dataset(dens_dataset, ener_dataset, velx_dataset, refine_dataset, vely_dataset,
+                             gammaB_dataset, amount_of_indexes, pres_dataset, hdf5_file)
 
     # Find maximum of gamma*beta for preparation of the plot dictionary
     max_gammaB = check_max_lorentz_factor(gammaB_dataset, indexes)
@@ -56,24 +60,18 @@ def main():
     plot_gammaB_ener(gamma_dict, total_energy)
 
 
-def only_plot_gamma():
+def only_plot_gamma(gamma_file):
     """
     Reads HDF5 file with gamma (already calculated) and
     create plots of Lorentz factor*b to energy distribution.
     """
-    # Read HDF5 file with h5py library
-    file = h5py.File(HDF5_FILE_PATH, 'r')
-    # All comments with ### are for some check or print functions
-
+    gamma_file = h5py.File(gamma_file, 'r')
     # We need values only from indexes with max refine level
-    indexes, amount_of_indexes = prepare_indexes_at_max_refine_level(file)
+    refine_level_dataset = gamma_file["refine level"]
+    indexes, amount_of_indexes = prepare_indexes_at_max_refine_level(refine_level_dataset)
 
-    # Retrieve energy
-    ener_dataset = file['ener']
-
-    # Save the gamma dataset to file so it can be used later
-    gamma_file = h5py.File('gamma.hdf5', 'r')
     gammaB_dataset = gamma_file["gamma"]
+    ener_dataset = gamma_file["ener"]
 
     # Find maximum of gamma*beta for preparation of the plot dictionary
     max_gammaB = check_max_lorentz_factor(gammaB_dataset, indexes)
@@ -104,7 +102,7 @@ def plot_gammaB_ener(gamma_dict, total_energy):
 
     # Interpolate a little for smoothness
     f = interp1d(plot_gamma, plot_ener, kind='cubic')
-    xnew = np.linspace(min(plot_gamma), max(plot_gamma), num=1000)
+    xnew = np.linspace(min(plot_gamma), max(plot_gamma), num=INTERPOLATION)
     plt.plot(xnew, f(xnew))
 
     # Labels and logarithmic scale
@@ -161,8 +159,8 @@ def prepare_gamma_dict_for_plot(ener_dataset, gamma_dataset, indexes, max_gamma,
     return gamma_dict
 
 
-def calculate_gammaB_dataset(dens_dataset, ener_dataset, velx_dataset,
-                             vely_dataset, gammaB_dataset, len_set, pres_dataset):
+def calculate_gammaB_dataset(dens_dataset, ener_dataset, velx_dataset, ref_dataset,
+                             vely_dataset, gammaB_dataset, len_set, pres_dataset, hdf5_file):
     """
     Calculate gamma*b value from dens, pres, vel and ener datasets
     """
@@ -181,10 +179,14 @@ def calculate_gammaB_dataset(dens_dataset, ener_dataset, velx_dataset,
             gammaB_dataset[i][0][k] = current_gamma
     print("Gamma dataset calculated.")
 
-    # Save the gamma dataset to file so it can be used later
-    with h5py.File('gamma.hdf5', 'w') as f:
+    # Save the gamma dataset, energy and refinement levels to file so it can be used later\
+    with h5py.File('gammaB_' + os.path.basename(hdf5_file), 'w') as f:
         f.create_dataset_like("gamma", dens_dataset)
+        f.create_dataset_like("ener", ener_dataset)
+        f.create_dataset_like("refine level", ref_dataset)
         f['gamma'][...] = gammaB_dataset
+        f['ener'][...] = ener_dataset
+        f['refine level'][...] = ref_dataset
 
 
 def prepare_gammaB_dataset(len_set, values_at_lowest_refine):
@@ -215,7 +217,7 @@ def check_max_lorentz_factor(gamma_dataset, indexes):
     return max_gamma
 
 
-def prepare_indexes_at_max_refine_level(file):
+def prepare_indexes_at_max_refine_level(refine_level_dataset):
     """
     Take refine levels that were used for the calculations,
     choose the max one and creates the tables of the indexes of cells that will contain
@@ -223,17 +225,16 @@ def prepare_indexes_at_max_refine_level(file):
     Indexes will be the same in all variable matrixes: dens, ener, pres etc.
     """
     # Determine refine level
-    refine_level_dataset = file['refine level'][:]
-    all_refine_levels = set(refine_level_dataset)
+    all_refine_levels = set(refine_level_dataset[:])
     max_refine_level = max(all_refine_levels)
     print('Max refine level:', max_refine_level)
 
     # Prepare array of indexes with needed refine level
-    amount_of_indexes = len(refine_level_dataset)
+    amount_of_indexes = len(refine_level_dataset[:])
     indexes = []
     for i in range(0, amount_of_indexes):
-        if refine_level_dataset[i] == max_refine_level:
-            indexes.append(i)
+        #if refine_level_dataset[i] == max_refine_level:
+        indexes.append(i)
     return indexes, amount_of_indexes
 
 
@@ -253,16 +254,19 @@ def check_max_density(dens_dataset, indexes):
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--HDF5", required=False)
-parser.add_argument("--gamma", required=False, dest='gamma', action='store_true')
-parser.set_defaults(gamma=False)
+group = parser.add_mutually_exclusive_group(required=True)
+group.add_argument('-f', "--HDF5", help="Path to the HDF5 file that contains FLASH results. ")
+group.add_argument('-g', "--gamma", help="Path to gamma dataset. Will process only plots preparation and drawing.")
+parser.add_argument('-i', "--inter", help="Number of intervals for the cubic interpolation of result. Default 1000.",
+                    required=False)
 
 if __name__ == '__main__':
     # TODO: add multithreading?
     args = parser.parse_args()
-    if args.HDF5:
-        HDF5_FILE_PATH = args.HDF5
+    if args.inter:
+        INTERPOLATION = args.inter
+
     if args.gamma:
-        only_plot_gamma()
+        only_plot_gamma(args.gamma)
     else:
-        main()
+        main(args.HDF5)
