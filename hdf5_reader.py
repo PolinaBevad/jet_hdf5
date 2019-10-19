@@ -10,6 +10,8 @@ from matplotlib.font_manager import FontProperties
 # Path to hdf5 file (checkpoint file)
 FONT_PROPERTIES_TTF_FILE = 'FreeSansBold.ttf'
 INTERPOLATION = 1000
+NXB = 8
+NYB = 8
 
 # Unicodes for beautiful symbols of  Lorentz factor and b=v/c
 G = u'\u0393'
@@ -26,12 +28,13 @@ def main(hdf5_file):
     # Read HDF5 file with h5py library
     file = h5py.File(hdf5_file, 'r')
 
-    ### print_all_available_variables(file)
+    print_all_available_variables(file)
 
-    # Get refinement levels
-    refine_dataset = file['refine level']
-    # We need values only from indexes with max refine level
-    indexes, amount_of_indexes = prepare_indexes_at_max_refine_level(refine_dataset)
+    # This one contains all nodes, so it can be used for plotting etc.
+    node_type_dataset = file['node type']
+
+    # We need values only from indexes with leaf nodes
+    indexes, amount_of_indexes = prepare_indexes_at_leaf_node(node_type_dataset)
 
     # Retrieve all needed datasets
     dens_dataset = file['dens']
@@ -42,11 +45,10 @@ def main(hdf5_file):
 
     ### check_max_density(dens_dataset, indexes)
 
-    values_at_lowest_refine = len(dens_dataset[0][0])
     # Calculate Lorentz factor: first create empty matrix, then fill with calculated gamma*beta
-    gammaB_dataset = prepare_gammaB_dataset(amount_of_indexes, values_at_lowest_refine)
-    calculate_gammaB_dataset(dens_dataset, ener_dataset, velx_dataset, refine_dataset, vely_dataset,
-                             gammaB_dataset, amount_of_indexes, pres_dataset, hdf5_file)
+    gammaB_dataset = prepare_gammaB_dataset(amount_of_indexes)
+    calculate_gammaB_dataset(dens_dataset, ener_dataset, velx_dataset, node_type_dataset, vely_dataset,
+                             gammaB_dataset, amount_of_indexes, pres_dataset, hdf5_file, indexes)
 
     # Find maximum of gamma*beta for preparation of the plot dictionary
     max_gammaB = check_max_lorentz_factor(gammaB_dataset, indexes)
@@ -68,7 +70,7 @@ def only_plot_gamma(gamma_file):
     gamma_file = h5py.File(gamma_file, 'r')
     # We need values only from indexes with max refine level
     refine_level_dataset = gamma_file["refine level"]
-    indexes, amount_of_indexes = prepare_indexes_at_max_refine_level(refine_level_dataset)
+    indexes, amount_of_indexes = prepare_indexes_at_leaf_node(refine_level_dataset)
 
     gammaB_dataset = gamma_file["gamma"]
     ener_dataset = gamma_file["ener"]
@@ -146,12 +148,11 @@ def prepare_gamma_dict_for_plot(ener_dataset, gamma_dataset, indexes, max_gamma,
     gamma_dict = {}
     for i in np.arange(0, max_gamma + 1, split):
         gamma_dict[round(i, round_level)] = 0
-
-    # For all indexes where needed refinement level is laying, fill gammaB dictionary
+    # For all indexes fill gammaB dictionary
     for i in indexes:
-        for k in range(0, len(gamma_dataset[i][0])):
+        for k in range(0, NYB):
             gamma_f = gamma_dataset[i][0][k]
-            for j in range(len(gamma_f)):
+            for j in range(0, NXB):
                 gammaBvalue = np.round(gamma_f[j], round_level)
                 # sum energy release for this value of gamma
                 gamma_dict[gammaBvalue] += ener_dataset[i][0][k][j]
@@ -159,20 +160,21 @@ def prepare_gamma_dict_for_plot(ener_dataset, gamma_dataset, indexes, max_gamma,
     return gamma_dict
 
 
-def calculate_gammaB_dataset(dens_dataset, ener_dataset, velx_dataset, ref_dataset,
-                             vely_dataset, gammaB_dataset, len_set, pres_dataset, hdf5_file):
+def calculate_gammaB_dataset(dens_dataset, ener_dataset, velx_dataset, node_type_dataset,
+                             vely_dataset, gammaB_dataset, len_set, pres_dataset, hdf5_file, indexes):
     """
     Calculate gamma*b value from dens, pres, vel and ener datasets
     """
-    for i in range(len_set):
-        for k in range(0, len(dens_dataset[i][0])):
+    print('len_set', len_set)
+    for i in indexes:
+        for k in range(0, NYB):
             dens = dens_dataset[i][0][k]
             pres = pres_dataset[i][0][k]
             ener = ener_dataset[i][0][k]
             velx = velx_dataset[i][0][k]
             vely = vely_dataset[i][0][k]
             current_gamma = []
-            for j in range(len(dens[:])):
+            for j in range(0, NXB):
                 B = math.sqrt(velx[j] ** 2 + vely[j] ** 2)
                 gammaB = B * np.sqrt((pres[j] + ener[j]) / (dens[j] + pres[j] * 1.333 / 0.333))
                 current_gamma.append(gammaB)
@@ -183,13 +185,13 @@ def calculate_gammaB_dataset(dens_dataset, ener_dataset, velx_dataset, ref_datas
     with h5py.File('gammaB_' + os.path.basename(hdf5_file), 'w') as f:
         f.create_dataset_like("gamma", dens_dataset)
         f.create_dataset_like("ener", ener_dataset)
-        f.create_dataset_like("refine level", ref_dataset)
+        f.create_dataset_like("node type", node_type_dataset)
         f['gamma'][...] = gammaB_dataset
         f['ener'][...] = ener_dataset
-        f['refine level'][...] = ref_dataset
+        f['node type'][...] = node_type_dataset
 
 
-def prepare_gammaB_dataset(len_set, values_at_lowest_refine):
+def prepare_gammaB_dataset(len_set):
     """
     Prepare 3x dimensional dataset that will store data about gamma*b in the cells
     """
@@ -197,7 +199,7 @@ def prepare_gammaB_dataset(len_set, values_at_lowest_refine):
     for i in range(len_set):
         gammaB_dataset.append(0)
         gammaB_dataset[i] = [0]
-        gammaB_dataset[i][0] = list([0 for j in range(0, values_at_lowest_refine)])
+        gammaB_dataset[i][0] = list([0 for j in range(0, NYB)])
     print("Gamma dataset filled with zeros.")
     return gammaB_dataset
 
@@ -217,24 +219,16 @@ def check_max_lorentz_factor(gamma_dataset, indexes):
     return max_gamma
 
 
-def prepare_indexes_at_max_refine_level(refine_level_dataset):
+def prepare_indexes_at_leaf_node(node_type):
     """
-    Take refine levels that were used for the calculations,
-    choose the max one and creates the tables of the indexes of cells that will contain
-    values with this maximum refine level.
     Indexes will be the same in all variable matrixes: dens, ener, pres etc.
     """
-    # Determine refine level
-    all_refine_levels = set(refine_level_dataset[:])
-    max_refine_level = max(all_refine_levels)
-    print('Max refine level:', max_refine_level)
-
-    # Prepare array of indexes with needed refine level
-    amount_of_indexes = len(refine_level_dataset[:])
+    LEAF_TYPE = 1
+    amount_of_indexes = len(node_type[:])
     indexes = []
     for i in range(0, amount_of_indexes):
-        #if refine_level_dataset[i] == max_refine_level:
-        indexes.append(i)
+        if node_type[i] == LEAF_TYPE:
+            indexes.append(i)
     return indexes, amount_of_indexes
 
 
