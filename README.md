@@ -26,9 +26,11 @@ Versions of required libraries are in *requirements.txt*
 
 To process calculations of Гb and creating the plot, run:  
 `python hdf5_reader.py -f [hdf5_file_path]`
-
+Option -t can be used to calculate integral energy. Otherwise energy will be output only for the current lorentz factor.
 This also will create *gamma_[hdf5_file_name].hdf5* file that contains result of calculating Гb values 
 and energy values. 
 It can be used in next runs. To run tool on already created gamma dataset (to only process energy and 
 gammaB preparing for plots), run:  
 `python hdf5_reader.py -g [gamma_hdf5_file_path]`
+
+

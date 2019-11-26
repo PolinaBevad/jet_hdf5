@@ -28,7 +28,7 @@ def main(hdf5_file):
     # Read HDF5 file with h5py library
     file = h5py.File(hdf5_file, 'r')
 
-    print_all_available_variables(file)
+    #print_all_available_variables(file)
 
     # This one contains all nodes, so it can be used for plotting etc.
     node_type_dataset = file['node type']
@@ -42,7 +42,6 @@ def main(hdf5_file):
     ener_dataset = file['ener']
     velx_dataset = file['velx']
     vely_dataset = file['vely']
-
     ### check_max_density(dens_dataset, indexes)
 
     # Calculate Lorentz factor: first create empty matrix, then fill with calculated gamma*beta
@@ -54,8 +53,9 @@ def main(hdf5_file):
     max_gammaB = check_max_lorentz_factor(gammaB_dataset, indexes)
 
     # Prepare dict for plot
-    round_level = 0
-    gamma_dict = prepare_gamma_dict_for_plot(ener_dataset, gammaB_dataset, indexes, max_gammaB, round_level)
+    round_level = 1
+    gamma_dict = prepare_gamma_dict_for_plot(ener_dataset, gammaB_dataset, indexes, max_gammaB, round_level,
+                                             velx_dataset, vely_dataset)
 
     total_energy = check_energy_dataset(gamma_dict)
     # Draw plot
@@ -79,7 +79,7 @@ def only_plot_gamma(gamma_file):
     max_gammaB = check_max_lorentz_factor(gammaB_dataset, indexes)
 
     # Prepare dict for plot
-    round_level = 0
+    round_level = 1
     gamma_dict = prepare_gamma_dict_for_plot(ener_dataset, gammaB_dataset, indexes, max_gammaB, round_level)
 
     total_energy = check_energy_dataset(gamma_dict)
@@ -93,7 +93,16 @@ def plot_gammaB_ener(gamma_dict, total_energy):
     """
     plot_gamma = list(gamma_dict.keys())
     # ratio of energy to the total energy
-    plot_ener = [i / total_energy for i in list(gamma_dict.values())]
+
+    plot_ener = []
+    gamma_array = list(gamma_dict.values())
+
+    if args.integral:
+        for i in range(len(gamma_array)):
+            plot_ener.append(sum(gamma_array[i:]))
+        plot_ener = [i / total_energy for i in plot_ener]
+    else:
+        plot_ener = [i / total_energy for i in gamma_array]
 
     # Font properties to show unicode symbols on plot
     prop = FontProperties()
@@ -109,7 +118,11 @@ def plot_gammaB_ener(gamma_dict, total_energy):
 
     # Labels and logarithmic scale
     plt.xlabel(G + B, fontproperties=prop)
-    plt.ylabel('E({}{})/E0'.format(G, B), fontproperties=prop)
+    if args.integral:
+        plt.ylabel(f'E(>{G}{B})/E0', fontproperties=prop)
+    else:
+        plt.ylabel(f'E({G}{B})/E0', fontproperties=prop)
+
     plt.xscale('log')
     plt.yscale('log')
     plt.title('Lorentz factor to energy distribution')
@@ -136,7 +149,7 @@ def check_energy_dataset(gamma_dict):
     return total_energy
 
 
-def prepare_gamma_dict_for_plot(ener_dataset, gamma_dataset, indexes, max_gamma, round_level):
+def prepare_gamma_dict_for_plot(ener_dataset, gamma_dataset, indexes, max_gamma, round_level, velx, vely):
     # Set rounding level for values in dictionary and level of splitting the range of gamma values
     split = 1
     if round_level == 0:
@@ -153,9 +166,11 @@ def prepare_gamma_dict_for_plot(ener_dataset, gamma_dataset, indexes, max_gamma,
         for k in range(0, NYB):
             gamma_f = gamma_dataset[i][0][k]
             for j in range(0, NXB):
-                gammaBvalue = np.round(gamma_f[j], round_level)
-                # sum energy release for this value of gamma
-                gamma_dict[gammaBvalue] += ener_dataset[i][0][k][j]
+                # Add only cells that are not in star, i.e. have velocities
+                if velx[i][0][k][j] > 0 or vely[i][0][k][j] > 0:
+                    gammaBvalue = np.round(gamma_f[j], round_level)
+                    # sum energy release for this value of gamma
+                    gamma_dict[gammaBvalue] += ener_dataset[i][0][k][j]
     print("Gamma plot prepared.")
     return gamma_dict
 
@@ -176,7 +191,8 @@ def calculate_gammaB_dataset(dens_dataset, ener_dataset, velx_dataset, node_type
             current_gamma = []
             for j in range(0, NXB):
                 B = math.sqrt(velx[j] ** 2 + vely[j] ** 2)
-                gammaB = B * np.sqrt((pres[j] + ener[j]) / (dens[j] + pres[j] * 1.333 / 0.333))
+                gamma = 1/np.sqrt(1 - (velx[j] ** 2 + vely[j] ** 2))
+                gammaB = B * gamma
                 current_gamma.append(gammaB)
             gammaB_dataset[i][0][k] = current_gamma
     print("Gamma dataset calculated.")
@@ -186,7 +202,8 @@ def calculate_gammaB_dataset(dens_dataset, ener_dataset, velx_dataset, node_type
         f.create_dataset_like("gamma", dens_dataset)
         f.create_dataset_like("ener", ener_dataset)
         f.create_dataset_like("node type", node_type_dataset)
-        f['gamma'][...] = gammaB_dataset
+        # TODO: fix the dimension for gamma dataset (must be 8x8)
+        #f['gamma'][...] = gammaB_dataset
         f['ener'][...] = ener_dataset
         f['node type'][...] = node_type_dataset
 
@@ -253,10 +270,12 @@ group.add_argument('-f', "--HDF5", help="Path to the HDF5 file that contains FLA
 group.add_argument('-g', "--gamma", help="Path to gamma dataset. Will process only plots preparation and drawing.")
 parser.add_argument('-i', "--inter", help="Number of intervals for the cubic interpolation of result. Default 1000.",
                     required=False)
+parser.add_argument('-t', "--integral", help="Calculate integral E(Gb) instead.", action="store_true",
+                    required=False)
+args = parser.parse_args()
 
 if __name__ == '__main__':
     # TODO: add multithreading?
-    args = parser.parse_args()
     if args.inter:
         INTERPOLATION = args.inter
 
