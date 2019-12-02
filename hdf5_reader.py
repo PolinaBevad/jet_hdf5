@@ -4,12 +4,9 @@ import h5py
 import numpy as np
 import argparse
 import matplotlib.pyplot as plt
-from scipy.interpolate import interp1d
 from matplotlib.font_manager import FontProperties
 
-# Path to hdf5 file (checkpoint file)
 FONT_PROPERTIES_TTF_FILE = 'FreeSansBold.ttf'
-INTERPOLATION = 1000
 NXB = 8
 NYB = 8
 
@@ -46,41 +43,16 @@ def main(hdf5_file):
 
     # Calculate Lorentz factor: first create empty matrix, then fill with calculated gamma*beta
     gammaB_dataset = prepare_gammaB_dataset(amount_of_indexes)
-    calculate_gammaB_dataset(dens_dataset, ener_dataset, velx_dataset, node_type_dataset, vely_dataset,
-                             gammaB_dataset, amount_of_indexes, pres_dataset, hdf5_file, indexes)
+    calculate_gammaB_dataset(velx_dataset,  vely_dataset,
+                             gammaB_dataset, amount_of_indexes, indexes)
 
     # Find maximum of gamma*beta for preparation of the plot dictionary
     max_gammaB = check_max_lorentz_factor(gammaB_dataset, indexes)
 
     # Prepare dict for plot
-    round_level = 1
+    round_level = 0
     gamma_dict = prepare_gamma_dict_for_plot(ener_dataset, gammaB_dataset, indexes, max_gammaB, round_level,
                                              velx_dataset, vely_dataset)
-
-    total_energy = check_energy_dataset(gamma_dict)
-    # Draw plot
-    plot_gammaB_ener(gamma_dict, total_energy)
-
-
-def only_plot_gamma(gamma_file):
-    """
-    Reads HDF5 file with gamma (already calculated) and
-    create plots of Lorentz factor*b to energy distribution.
-    """
-    gamma_file = h5py.File(gamma_file, 'r')
-    # We need values only from indexes with max refine level
-    refine_level_dataset = gamma_file["refine level"]
-    indexes, amount_of_indexes = prepare_indexes_at_leaf_node(refine_level_dataset)
-
-    gammaB_dataset = gamma_file["gamma"]
-    ener_dataset = gamma_file["ener"]
-
-    # Find maximum of gamma*beta for preparation of the plot dictionary
-    max_gammaB = check_max_lorentz_factor(gammaB_dataset, indexes)
-
-    # Prepare dict for plot
-    round_level = 1
-    gamma_dict = prepare_gamma_dict_for_plot(ener_dataset, gammaB_dataset, indexes, max_gammaB, round_level)
 
     total_energy = check_energy_dataset(gamma_dict)
     # Draw plot
@@ -96,7 +68,6 @@ def plot_gammaB_ener(gamma_dict, total_energy):
 
     plot_ener = []
     gamma_array = list(gamma_dict.values())
-
     if args.integral:
         for i in range(len(gamma_array)):
             plot_ener.append(sum(gamma_array[i:]))
@@ -110,11 +81,7 @@ def plot_gammaB_ener(gamma_dict, total_energy):
 
     # default style for plot
     plt.rcdefaults()
-
-    # Interpolate a little for smoothness
-    f = interp1d(plot_gamma, plot_ener, kind='cubic')
-    xnew = np.linspace(min(plot_gamma), max(plot_gamma), num=INTERPOLATION)
-    plt.plot(xnew, f(xnew))
+    plt.plot(plot_gamma, plot_ener)
 
     # Labels and logarithmic scale
     plt.xlabel(G + B, fontproperties=prop)
@@ -175,17 +142,13 @@ def prepare_gamma_dict_for_plot(ener_dataset, gamma_dataset, indexes, max_gamma,
     return gamma_dict
 
 
-def calculate_gammaB_dataset(dens_dataset, ener_dataset, velx_dataset, node_type_dataset,
-                             vely_dataset, gammaB_dataset, len_set, pres_dataset, hdf5_file, indexes):
+def calculate_gammaB_dataset(velx_dataset, vely_dataset, gammaB_dataset, len_set, indexes):
     """
     Calculate gamma*b value from dens, pres, vel and ener datasets
     """
     print('len_set', len_set)
     for i in indexes:
         for k in range(0, NYB):
-            dens = dens_dataset[i][0][k]
-            pres = pres_dataset[i][0][k]
-            ener = ener_dataset[i][0][k]
             velx = velx_dataset[i][0][k]
             vely = vely_dataset[i][0][k]
             current_gamma = []
@@ -196,16 +159,6 @@ def calculate_gammaB_dataset(dens_dataset, ener_dataset, velx_dataset, node_type
                 current_gamma.append(gammaB)
             gammaB_dataset[i][0][k] = current_gamma
     print("Gamma dataset calculated.")
-
-    # Save the gamma dataset, energy and refinement levels to file so it can be used later\
-    with h5py.File('gammaB_' + os.path.basename(hdf5_file), 'w') as f:
-        f.create_dataset_like("gamma", dens_dataset)
-        f.create_dataset_like("ener", ener_dataset)
-        f.create_dataset_like("node type", node_type_dataset)
-        # TODO: fix the dimension for gamma dataset (must be 8x8)
-        #f['gamma'][...] = gammaB_dataset
-        f['ener'][...] = ener_dataset
-        f['node type'][...] = node_type_dataset
 
 
 def prepare_gammaB_dataset(len_set):
@@ -265,21 +218,12 @@ def check_max_density(dens_dataset, indexes):
 
 
 parser = argparse.ArgumentParser()
-group = parser.add_mutually_exclusive_group(required=True)
-group.add_argument('-f', "--HDF5", help="Path to the HDF5 file that contains FLASH results. ")
-group.add_argument('-g', "--gamma", help="Path to gamma dataset. Will process only plots preparation and drawing.")
-parser.add_argument('-i', "--inter", help="Number of intervals for the cubic interpolation of result. Default 1000.",
-                    required=False)
+parser.add_argument('-f', "--HDF5", help="Path to the HDF5 file that contains FLASH results. ",
+                   required=True)
 parser.add_argument('-t', "--integral", help="Calculate integral E(Gb) instead.", action="store_true",
                     required=False)
 args = parser.parse_args()
 
 if __name__ == '__main__':
     # TODO: add multithreading?
-    if args.inter:
-        INTERPOLATION = args.inter
-
-    if args.gamma:
-        only_plot_gamma(args.gamma)
-    else:
-        main(args.HDF5)
+    main(args.HDF5)
