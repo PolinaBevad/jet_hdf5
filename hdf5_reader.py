@@ -78,7 +78,8 @@ def plot_gammaB_ener(gamma_dict, total_energy):
 
     # default style for plotligh
     plt.rcdefaults()
-    plt.subplot(2, 1, 1)
+    plt.style.use('ggplot')
+    plt.subplot(1, 2, 1)
     plt.plot(plot_gamma, plot_ener_integral)
 
     # Labels and logarithmic scale
@@ -88,7 +89,7 @@ def plot_gammaB_ener(gamma_dict, total_energy):
     plt.yscale('log')
     plt.title('Lorentz factor to energy distribution (CUMULATIVE)')
 
-    plt.subplot(2, 1, 2)
+    plt.subplot(1, 2, 2)
     plt.plot(plot_gamma, plot_ener_single)
 
     # Labels and logarithmic scale
