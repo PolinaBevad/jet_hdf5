@@ -1,7 +1,6 @@
 import matplotlib.pyplot as plt
 from matplotlib.font_manager import FontProperties
 
-INTERPOLATION = 1000
 FONT_PROPERTIES_TTF_FILE = 'FreeSansBold.ttf'
 
 # Unicodes for beautiful symbols of  Lorentz factor and b=v/c

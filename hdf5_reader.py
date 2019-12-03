@@ -50,7 +50,7 @@ def main(hdf5_file):
     max_gammaB = check_max_lorentz_factor(gammaB_dataset, indexes)
 
     # Prepare dict for plot
-    round_level = 0
+    round_level = 1
     gamma_dict = prepare_gamma_dict_for_plot(ener_dataset, gammaB_dataset, indexes, max_gammaB, round_level,
                                              velx_dataset, vely_dataset)
 
@@ -65,34 +65,38 @@ def plot_gammaB_ener(gamma_dict, total_energy):
     """
     plot_gamma = list(gamma_dict.keys())
     # ratio of energy to the total energy
-
-    plot_ener = []
     gamma_array = list(gamma_dict.values())
-    if args.integral:
-        for i in range(len(gamma_array)):
-            plot_ener.append(sum(gamma_array[i:]))
-        plot_ener = [i / total_energy for i in plot_ener]
-    else:
-        plot_ener = [i / total_energy for i in gamma_array]
+    plot_ener = []
+    for i in range(len(gamma_array)):
+        plot_ener.append(sum(gamma_array[i:]))
+    plot_ener_integral = [i / total_energy for i in plot_ener]
+    plot_ener_single = [i / total_energy for i in gamma_array]
 
     # Font properties to show unicode symbols on plot
     prop = FontProperties()
     prop.set_file(FONT_PROPERTIES_TTF_FILE)
 
-    # default style for plot
+    # default style for plotligh
     plt.rcdefaults()
-    plt.plot(plot_gamma, plot_ener)
+    plt.subplot(2, 1, 1)
+    plt.plot(plot_gamma, plot_ener_integral)
 
     # Labels and logarithmic scale
     plt.xlabel(G + B, fontproperties=prop)
-    if args.integral:
-        plt.ylabel(f'E(>{G}{B})/E0', fontproperties=prop)
-    else:
-        plt.ylabel(f'E({G}{B})/E0', fontproperties=prop)
-
+    plt.ylabel(f'E(>{G}{B})/E0', fontproperties=prop)
     plt.xscale('log')
     plt.yscale('log')
-    plt.title('Lorentz factor to energy distribution')
+    plt.title('Lorentz factor to energy distribution (CUMULATIVE)')
+
+    plt.subplot(2, 1, 2)
+    plt.plot(plot_gamma, plot_ener_single)
+
+    # Labels and logarithmic scale
+    plt.xlabel(G + B, fontproperties=prop)
+    plt.ylabel(f'E({G}{B})/E0', fontproperties=prop)
+    plt.xscale('log')
+    plt.yscale('log')
+    plt.title('Lorentz factor to energy distribution (NON-CUMULATIVE)')
 
     plt.show()
 
@@ -123,7 +127,8 @@ def prepare_gamma_dict_for_plot(ener_dataset, gamma_dataset, indexes, max_gamma,
         split = 1
     if round_level == 1:
         split = 0.1
-
+    if round_level == 2:
+        split = 0.01
     # Fill gamma dict with zero energy
     gamma_dict = {}
     for i in np.arange(0, max_gamma + 1, split):
@@ -220,8 +225,6 @@ def check_max_density(dens_dataset, indexes):
 parser = argparse.ArgumentParser()
 parser.add_argument('-f', "--HDF5", help="Path to the HDF5 file that contains FLASH results. ",
                    required=True)
-parser.add_argument('-t', "--integral", help="Calculate integral E(Gb) instead.", action="store_true",
-                    required=False)
 args = parser.parse_args()
 
 if __name__ == '__main__':

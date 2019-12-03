@@ -27,6 +27,4 @@ Versions of required libraries are in *requirements.txt*
 To process calculations of Гb and creating the plot, run:  
 `python hdf5_reader.py -f [hdf5_file_path]`
 
-Option `-t` can be used to calculate integral energy. Otherwise energy will be output only for the current lorentz factor.
-
 
