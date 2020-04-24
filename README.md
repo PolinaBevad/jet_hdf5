@@ -25,25 +25,27 @@ Versions of required libraries are in *requirements.txt*
 ### Usage
 
 To process calculations of Гb and creating the PDF plot for single HDF5 file or few files, run:  
-`python hdf5_reader.py --files [hdf5_file_path,hdf5_file_path,hdf5_file_path]`
+  `python hdf5_reader.py --files [hdf5_file_path,hdf5_file_path,hdf5_file_path]`
+
 Plot will be saved in result_ener_vel_{hdf5_name}.pdf in folder with files.
 
 To find the file with maximum avergage Гb (Lorentz factor*b) from HDF5 files in folder (or list of folders), 
 and then process calculations for this file (will be created for each folder), run:  
-`python hdf5_reader.py --folders [hdf5_folder_path,hdf5_folder_path,hdf5_folder_path]`
+  `python hdf5_reader.py --folders [hdf5_folder_path,hdf5_folder_path,hdf5_folder_path]`
+
 Also will output maximum and average Гb for each file in report.txt.
 
 Additional options:
 
-`--round [0/1/2]`
+`--round [0/1/2]`  
 Set the level to round gammaB value. It will output plot with the level of round, i.e. for round 0 it wt will round all values to digits.
 For the higher detalization must be set to 2 (default).
 
-Example:
---round 0       | (4.55 -> 4)
---round 1       | (4.55 -> 4.6)
---round 2       | (4.55 -> 4.55)
-
-`--overlap`
+Example:  
+--round 0       | (4.55 -> 4)  
+--round 1       | (4.55 -> 4.6)  
+--round 2       | (4.55 -> 4.55) 
+ 
+`--overlap`  
 Draw all plots in one graph if there were few files provided. Plots will be labeled by paths of files. Also `overlap` 
 will be added to the name of plot file.
